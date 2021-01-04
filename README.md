@@ -1,4 +1,4 @@
-# Accelerating Robot Dynamics Gradients: Hardware-Software Co-Design on a CPU, GPU, and FPGA
+# Accelerating Robot Dynamics Gradients on a CPU, GPU, and FPGA
 
 ## Timing tests and code for the CPU and GPU.
 
@@ -11,7 +11,7 @@ time_GPU_WAFR.cu       # /utils, /helpers_WAFR
 nvcc -std=c++11 -o WAFR_timing.exe time_GPU_WAFR.cu -gencode arch=compute_75,code=sm_75 -O3
 ```
 
-### Our co-designed implementations (and compilation instructions) are:
+### Our accelerated implementations (and compilation instructions) are:
 ```
 time_CPU.cpp           # /utils, /helpers_CPU
 g++ -std=c++11 -o CPU_timing.exe time_CPU.cpp -lpthread -O3 -march=native -mavx
