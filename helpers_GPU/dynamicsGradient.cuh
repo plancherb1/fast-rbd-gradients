@@ -8,6 +8,19 @@
    #define NUM_POS 7
 #endif
 
+#if TEST_FOR_EQUIVALENCE
+    dim3 BlockDimms(1,1);
+#else
+    // mainly single loops a few double loops where dimy = NUM_POS
+    // dimx and single loops ocassionally very high but generally O(NUM_POS)
+    // with small constants. As such we set dimx = 32 which is the warp size
+    // to avoid divergence of warps during double loops (ideally) and this is
+    // not too large that it will overtax the GPU scheduler
+    dim3 BlockDimms(32,NUM_POS);
+#endif
+
+#define LEAD_THREAD (threadIdx.x == 0 && threadIdx.y == 0)
+
 __device__ __forceinline__
 void singleLoopVals_GPU(int *start, int *delta){*start = threadIdx.x + threadIdx.y*blockDim.x; *delta = blockDim.x*blockDim.y;}
 __device__ __forceinline__
@@ -70,9 +83,6 @@ T dotProd_GPU(T *a, int s_a, T *b, int s_b){
    for (int j=0; j < K; j++){val += a[s_a * j] * b[s_b * j];}
    return val;
 }
-
-// include Minv Helpers
-#include "minv.cuh"
 
 template <typename T>
 __device__ 
@@ -686,6 +696,9 @@ void buildTransforms_GPU(T *s_T, T *s_sinq, T *s_cosq){
         Tkcr[6*3] = static_cast<T>(0); // TR is 3 cols over
     }
 }
+
+// include Minv Helpers
+#include "minv.cuh"
 
 template <typename T, bool MPC_MODE = false>
 __device__

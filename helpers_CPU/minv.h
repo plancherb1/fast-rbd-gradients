@@ -399,7 +399,7 @@ void bwdPassMinvFUpdate(T *s_Minv, T *Fi, T *Flami, T *iXlami, T *Ui, T Dinvi, i
          s_Minv[rc_Ind(li,(li+1+i),NUM_POS)] = -Dinvi * Fi[rc_Ind(2,(li+1+i),6)];
       }
    }
-   // (14)    Fi[:,subtree(i)] = Ui * Minv[i,subtree(i)]
+   // (14)    Fi[:,subtree(i)] += Ui * Minv[i,subtree(i)]
    // (15)    Flami[:,subtree(i)] = Flami[:,subtree(i)] + lamiXi* * Fi[:,subtree(i)]
    // or we do the following if there is no children then c = 0
    // (19)    Flami[:,i] += lamiXi* * Ui * Minv[i,i]

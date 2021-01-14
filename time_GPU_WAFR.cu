@@ -24,18 +24,13 @@ void test(){
 	T *h_T = (T *)malloc(36*NUM_POS*NUM_TIME_STEPS_TEST*sizeof(T)); initT(h_T);
 	T *h_mem_vol = (T *)malloc((4*NUM_POS + NUM_POS*NUM_POS)*NUM_TIME_STEPS_TEST*sizeof(T)); // x,u,qdd,Minv
 	T *h_mem_const = (T *)malloc(72*NUM_POS*NUM_TIME_STEPS_TEST*sizeof(T)); // I,Tbody
-	#pragma unroll
 	for (int k = 0; k < NUM_TIME_STEPS_TEST; k++){
 		T *h_qddk = &h_qdd[k*NUM_POS];
 		T *h_xk = &h_x[k*2*NUM_POS];
 		T *h_uk = &h_u[k*NUM_POS];
 		T *h_Minvk = &h_Minv[k*NUM_POS*NUM_POS];
 		T *h_mem_volk = &h_mem_vol[k*(4*NUM_POS + NUM_POS*NUM_POS)];
-		#if TEST_FOR_EQUIVALENCE
-			for(int j = 0; j < NUM_POS; j++){h_xk[j] = 0.1; h_xk[j+NUM_POS] = 0.1; h_uk[j] = 0.1;}
-		#else
-			for(int i = 0; i < NUM_POS; i++){h_xk[i] = getRand<T>(); h_xk[i+NUM_POS] = getRand<T>(); h_uk[i] = getRand<T>();}
-		#endif
+		for(int i = 0; i < NUM_POS; i++){h_xk[i] = getRand<T>(); h_xk[i+NUM_POS] = getRand<T>(); h_uk[i] = getRand<T>();}
 		dynamicsMinv<T,VEL_DAMPING>(h_qddk,h_xk,h_uk,h_I,h_T,h_Minvk);
 		for(int i = 0; i < 4*NUM_POS + NUM_POS*NUM_POS; i++){
 			if (i < 2*NUM_POS){h_mem_volk[i] = h_xk[i];}

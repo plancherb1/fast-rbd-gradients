@@ -65,15 +65,9 @@ void test(){
 	traj<T,NUM_TIME_STEPS_TEST> *testTraj = new traj<T,NUM_TIME_STEPS_TEST>;
 	for (int k = 0; k < NUM_TIME_STEPS_TEST; k++){
 		for(int i = 0; i < NUM_POS; i++){
-			#if TEST_FOR_EQUIVALENCE
-				testTraj->knots[k].q[i] = 0.1;
-				testTraj->knots[k].qd[i] = 0.1;
-				testTraj->knots[k].u[i] = 0.1;
-			#else
-				testTraj->knots[k].q[i] = getRand<T>(); 
-				testTraj->knots[k].qd[i] = getRand<T>();
-				testTraj->knots[k].u[i] = getRand<T>();
-			#endif
+			testTraj->knots[k].q[i] = getRand<T>(); 
+			testTraj->knots[k].qd[i] = getRand<T>();
+			testTraj->knots[k].u[i] = getRand<T>();
 		}
 		forwardDynamics<T,MPC_MODE,VEL_DAMPING>(&(testTraj->knots[k]));
 	}

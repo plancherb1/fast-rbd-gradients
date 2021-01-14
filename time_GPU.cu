@@ -7,17 +7,6 @@ nvcc -std=c++11 -o GPU_timing.exe time_GPU.cu -gencode arch=compute_75,code=sm_7
 #include "helpers_CPU/dynamicsGradient.h" // GPU requires CPU for partial kernels
 #include "helpers_GPU/dynamicsGradient.cuh"
 
-#if TEST_FOR_EQUIVALENCE
-	dim3 dimms(1,1);
-#else
-	// mainly single loops a few double loops where dimy = NUM_POS
-	// dimx and single loops ocassionally very high but generally O(NUM_POS)
-	// with small constants. As such we set dimx = 32 which is the warp size
-	// to avoid divergence of warps during double loops (ideally) and this is
-	// not too large that it will overtax the GPU scheduler
-	dim3 dimms(32,NUM_POS);
-#endif
-
 template <typename T, int TEST_ITERS, bool MPC_MODE = false, bool VEL_DAMPING = true>
 __global__
 void kern_single_full(T *d_dqdd, T *d_mem_vol, T *d_mem_const, T *s_fext = nullptr){
@@ -121,15 +110,9 @@ void test(){
 	traj<T,NUM_TIME_STEPS_TEST> *testTraj = new traj<T,NUM_TIME_STEPS_TEST>;
 	for (int k = 0; k < NUM_TIME_STEPS_TEST; k++){
 		for(int i = 0; i < NUM_POS; i++){
-			#if TEST_FOR_EQUIVALENCE
-				testTraj->knots[k].q[i] = 0.1;
-				testTraj->knots[k].qd[i] = 0.1;
-				testTraj->knots[k].u[i] = 0.1;
-			#else
-				testTraj->knots[k].q[i] = getRand<T>(); 
-				testTraj->knots[k].qd[i] = getRand<T>();
-				testTraj->knots[k].u[i] = getRand<T>();
-			#endif
+			testTraj->knots[k].q[i] = getRand<T>(); 
+			testTraj->knots[k].qd[i] = getRand<T>();
+			testTraj->knots[k].u[i] = getRand<T>();
 		}
 		forwardDynamics<T,MPC_MODE,VEL_DAMPING,1>(&(testTraj->knots[k]));
 	}
@@ -189,7 +172,7 @@ void test(){
 			#define SINGLE_TEST_ITERS (TEST_ITERS*10)
 		#endif
 		clock_gettime(CLOCK_MONOTONIC,&start);
-		kern_single_full<T,SINGLE_TEST_ITERS,MPC_MODE,VEL_DAMPING><<<1,dimms>>>(d_dqdd,d_mem_vol_completely_fused,d_mem_const);
+		kern_single_full<T,SINGLE_TEST_ITERS,MPC_MODE,VEL_DAMPING><<<1,BlockDimms>>>(d_dqdd,d_mem_vol_completely_fused,d_mem_const);
 		gpuErrchk(cudaDeviceSynchronize());
 		clock_gettime(CLOCK_MONOTONIC,&end);
 		printf("Single Call vaf+dc/du+dqdd/du %fus\n",time_delta_us_timespec(start,end)/static_cast<double>(SINGLE_TEST_ITERS));
@@ -211,13 +194,13 @@ void test(){
 		#endif
 
 		clock_gettime(CLOCK_MONOTONIC,&start);
-		kern_single_vaf_dcdu<T,SINGLE_TEST_ITERS,MPC_MODE,VEL_DAMPING><<<1,dimms>>>(d_dqdd,d_mem_vol_fused,d_mem_const);
+		kern_single_vaf_dcdu<T,SINGLE_TEST_ITERS,MPC_MODE,VEL_DAMPING><<<1,BlockDimms>>>(d_dqdd,d_mem_vol_fused,d_mem_const);
 		gpuErrchk(cudaDeviceSynchronize());
 		clock_gettime(CLOCK_MONOTONIC,&end);
 		printf("Single Call vaf+dc/du %fus\n",time_delta_us_timespec(start,end)/static_cast<double>(SINGLE_TEST_ITERS));
 		
 		clock_gettime(CLOCK_MONOTONIC,&start);
-		kern_single_vaf<T,SINGLE_TEST_ITERS,MPC_MODE,VEL_DAMPING><<<1,dimms>>>(d_vaf,d_mem_vol_fused,d_mem_const);
+		kern_single_vaf<T,SINGLE_TEST_ITERS,MPC_MODE,VEL_DAMPING><<<1,BlockDimms>>>(d_vaf,d_mem_vol_fused,d_mem_const);
 		gpuErrchk(cudaDeviceSynchronize());
 		clock_gettime(CLOCK_MONOTONIC,&end);
 		printf("Single Call vaf %fus\n",time_delta_us_timespec(start,end)/static_cast<double>(SINGLE_TEST_ITERS));
@@ -241,7 +224,7 @@ void test(){
 	    for(int iter = 0; iter < TEST_ITERS; iter++){
 	    	clock_gettime(CLOCK_MONOTONIC,&start);
 		    gpuErrchk(cudaMemcpy(d_mem_vol_split,h_mem_vol_split,SPLIT_VALS*NUM_TIME_STEPS_TEST*sizeof(T),cudaMemcpyHostToDevice));
-			dynamicsGradientKernel_split<T,NUM_TIME_STEPS_TEST,VEL_DAMPING><<<NUM_TIME_STEPS_TEST,dimms>>>(d_cdu,d_mem_vol_split,d_mem_const);
+			dynamicsGradientKernel_split<T,NUM_TIME_STEPS_TEST,VEL_DAMPING><<<NUM_TIME_STEPS_TEST,BlockDimms>>>(d_cdu,d_mem_vol_split,d_mem_const);
 			gpuErrchk(cudaDeviceSynchronize());
 			gpuErrchk(cudaMemcpy(h_cdu,d_cdu,2*NUM_POS*NUM_POS*NUM_TIME_STEPS_TEST*sizeof(T),cudaMemcpyDeviceToHost));
 			clock_gettime(CLOCK_MONOTONIC,&end);
@@ -252,7 +235,7 @@ void test(){
 		std::vector<double> times3 = {};
 	    for(int iter = 0; iter < TEST_ITERS; iter++){
 	    	clock_gettime(CLOCK_MONOTONIC,&start);
-		    dynamicsGradientKernel_split<T,NUM_TIME_STEPS_TEST,VEL_DAMPING><<<NUM_TIME_STEPS_TEST,dimms>>>(d_cdu,d_mem_vol_split,d_mem_const);
+		    dynamicsGradientKernel_split<T,NUM_TIME_STEPS_TEST,VEL_DAMPING><<<NUM_TIME_STEPS_TEST,BlockDimms>>>(d_cdu,d_mem_vol_split,d_mem_const);
 			gpuErrchk(cudaDeviceSynchronize());
 			clock_gettime(CLOCK_MONOTONIC,&end);
 			times3.push_back(time_delta_us_timespec(start,end));
@@ -276,7 +259,7 @@ void test(){
 	    for(int iter = 0; iter < TEST_ITERS; iter++){
 	    	clock_gettime(CLOCK_MONOTONIC,&start);
 		    gpuErrchk(cudaMemcpy(d_mem_vol_fused,h_mem_vol_fused,FUSED_VALS*NUM_TIME_STEPS_TEST*sizeof(T),cudaMemcpyHostToDevice));
-			dynamicsGradientKernel_fused<T,NUM_TIME_STEPS_TEST,VEL_DAMPING><<<NUM_TIME_STEPS_TEST,dimms>>>(d_dqdd,d_mem_vol_fused,d_mem_const);
+			dynamicsGradientKernel_fused<T,NUM_TIME_STEPS_TEST,VEL_DAMPING><<<NUM_TIME_STEPS_TEST,BlockDimms>>>(d_dqdd,d_mem_vol_fused,d_mem_const);
 			gpuErrchk(cudaDeviceSynchronize());
 			gpuErrchk(cudaMemcpy(h_dqdd,d_dqdd,2*NUM_POS*NUM_POS*NUM_TIME_STEPS_TEST*sizeof(T),cudaMemcpyDeviceToHost));
 			clock_gettime(CLOCK_MONOTONIC,&end);
@@ -287,7 +270,7 @@ void test(){
 		std::vector<double> times6 = {};
 	    for(int iter = 0; iter < TEST_ITERS; iter++){
 	    	clock_gettime(CLOCK_MONOTONIC,&start);
-		    dynamicsGradientKernel_fused<T,NUM_TIME_STEPS_TEST,VEL_DAMPING><<<NUM_TIME_STEPS_TEST,dimms>>>(d_dqdd,d_mem_vol_fused,d_mem_const);
+		    dynamicsGradientKernel_fused<T,NUM_TIME_STEPS_TEST,VEL_DAMPING><<<NUM_TIME_STEPS_TEST,BlockDimms>>>(d_dqdd,d_mem_vol_fused,d_mem_const);
 			gpuErrchk(cudaDeviceSynchronize());
 			clock_gettime(CLOCK_MONOTONIC,&end);
 			times6.push_back(time_delta_us_timespec(start,end));
@@ -311,7 +294,7 @@ void test(){
 	    for(int iter = 0; iter < TEST_ITERS; iter++){
 	    	clock_gettime(CLOCK_MONOTONIC,&start);
 		    gpuErrchk(cudaMemcpy(d_mem_vol_completely_fused,h_mem_vol_completely_fused,COMPLETELY_FUSED_VALS*NUM_TIME_STEPS_TEST*sizeof(T),cudaMemcpyHostToDevice));
-			dynamicsGradientKernel<T,NUM_TIME_STEPS_TEST,MPC_MODE,VEL_DAMPING><<<NUM_TIME_STEPS_TEST,dimms>>>(d_dqdd,d_mem_vol_completely_fused,d_mem_const);
+			dynamicsGradientKernel<T,NUM_TIME_STEPS_TEST,MPC_MODE,VEL_DAMPING><<<NUM_TIME_STEPS_TEST,BlockDimms>>>(d_dqdd,d_mem_vol_completely_fused,d_mem_const);
 			gpuErrchk(cudaDeviceSynchronize());
 			gpuErrchk(cudaMemcpy(h_dqdd,d_dqdd,2*NUM_POS*NUM_POS*NUM_TIME_STEPS_TEST*sizeof(T),cudaMemcpyDeviceToHost));
 			clock_gettime(CLOCK_MONOTONIC,&end);
@@ -322,7 +305,7 @@ void test(){
 		std::vector<double> times9= {};
 	    for(int iter = 0; iter < TEST_ITERS; iter++){
 	    	clock_gettime(CLOCK_MONOTONIC,&start);
-		    dynamicsGradientKernel<T,NUM_TIME_STEPS_TEST,MPC_MODE,VEL_DAMPING><<<NUM_TIME_STEPS_TEST,dimms>>>(d_dqdd,d_mem_vol_completely_fused,d_mem_const);
+		    dynamicsGradientKernel<T,NUM_TIME_STEPS_TEST,MPC_MODE,VEL_DAMPING><<<NUM_TIME_STEPS_TEST,BlockDimms>>>(d_dqdd,d_mem_vol_completely_fused,d_mem_const);
 			gpuErrchk(cudaDeviceSynchronize());
 			clock_gettime(CLOCK_MONOTONIC,&end);
 			times9.push_back(time_delta_us_timespec(start,end));

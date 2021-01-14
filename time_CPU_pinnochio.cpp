@@ -88,7 +88,6 @@ void test(){
    MatrixXd Minvs[NUM_TIME_STEPS_TEST];
    MatrixXd dqdd_dqs[NUM_TIME_STEPS_TEST];
    MatrixXd dqdd_dqds[NUM_TIME_STEPS_TEST];
-   #pragma unroll
    for(int i = 0; i < NUM_TIME_STEPS_TEST; i++){
       qs[i] = VectorXd::Zero(model.nq);
       qds[i] = VectorXd::Zero(model.nv);
@@ -97,11 +96,7 @@ void test(){
       Minvs[i] = MatrixXd::Zero(model.nq,model.nq);
       dqdd_dqs[i] = MatrixXd::Zero(model.nv,model.nq);
       dqdd_dqds[i] = MatrixXd::Zero(model.nv,model.nv);
-      #if TEST_FOR_EQUIVALENCE
-         for(int j = 0; j < model.nq; j++){qs[i][j] = 0.1; qds[i][j] = 0.1; us[i][j] = 0.1;}
-      #else
-         for(int j = 0; j < model.nq; j++){qs[i][j] = getRand<double>(); qds[i][j] = getRand<double>(); us[i][j] = getRand<double>();}
-      #endif
+      for(int j = 0; j < model.nq; j++){qs[i][j] = getRand<double>(); qds[i][j] = getRand<double>(); us[i][j] = getRand<double>();}
       aba(model,datas[0],qs[i],qds[i],us[i]);
       computeMinverse(model,datas[0],qs[i]); 
       datas[0].Minv.template triangularView<Eigen::StrictlyLower>() = datas[0].Minv.transpose().template triangularView<Eigen::StrictlyLower>();

@@ -8,22 +8,26 @@
 #include <pthread.h>
 #include "ReusableThreads.h"
 
-#define TEST_FOR_EQUIVALENCE 0
-#if TEST_FOR_EQUIVALENCE
-   #define TEST_ITERS_GLOBAL 1
-#else
-   #define TEST_ITERS_GLOBAL 100000
-#endif
 #define CPU_THREADS_GLOBAL 4
 #define QDD_MINV_PASSED_IN_GLOBAL true
 #define MPC_MODE_GLOBAL false
 #define VEL_DAMPING_GLOBAL false
 #define EXTERNAL_TI_GLOBAL true
 #define PRINT_DISTRIBUTIONS_GLOBAL true
-
 #define RANDOM_MEAN 0
 #define RANDOM_STDEV 1
-std::default_random_engine randEng(time(0)); //seed
+
+#ifndef TEST_FOR_EQUIVALENCE
+   #define TEST_FOR_EQUIVALENCE 0
+#endif
+#if TEST_FOR_EQUIVALENCE
+   #define TEST_ITERS_GLOBAL 1
+   std::default_random_engine randEng(1337); // fixed seed
+#else
+   #define TEST_ITERS_GLOBAL 100000
+   std::default_random_engine randEng(time(0)); // rand seed
+#endif
+
 std::normal_distribution<double> randDist(RANDOM_MEAN, RANDOM_STDEV); //mean followed by stdiv
 template <typename T>
 T getRand(){return static_cast<T>(randDist(randEng));}
