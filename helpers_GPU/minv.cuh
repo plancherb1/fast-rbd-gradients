@@ -1,101 +1,3 @@
-// template <typename T, bool MPC_MODE = false>
-// __device__
-// void FD_helpers_GPU_Minv(T *s_Minv, T *s_IA, T *s_T, T *s_U, T *s_D, T *s_F, T *s_temp, T *s_fext = nullptr){
-// 	//----------------------------------------------------------------------------
-// 	// Minv Backward Pass
-// 	//----------------------------------------------------------------------------
-// 	int start, delta; singleLoopVals_GPU(&start,&delta);
-// 	for (int kMinv = NUM_POS - 1; kMinv >= 0; kMinv--){
-// 		// start with the first bit of the Minv comp (U,D)
-// 		T *Uk = &s_U[6*kMinv]; T *Dk = &s_D[2*kMinv]; T *IAk = &s_IA[36*kMinv]; T *Tk = &s_T[36*kMinv];
-// 		for(int i = start; i < 6; i += delta){Uk[i] = IAk[6*2+i]; if(i == 2){Dk[0] = Uk[i]; Dk[1] = 1/Dk[0];}}
-// 		__syncthreads();
-// 		// if it has a parent (aka not root link) start updating IA by computing the temp val
-// 		bool has_parent = kMinv > 0;
-// 		if (has_parent){
-// 			for(int i = start; i < 36; i += delta){
-// 				int c = start / 6; int r = start % 6; T val = static_cast<T>(0);
-// 				for (int i = 0; i < 6; i++){val += (IAk[r+6*i] - Uk[i]*Uk[r]*Dk[1]) * Tk[c*6+i];}
-// 				s_temp[c*6+r] = val;
-// 		    }
-// 		}
-// 		// Update Minv
-// 		// Minv[k,k] = Dk^-1 (stored in Dk[1])
-// 		if(LEAD_THREAD){s_Minv[kMinv*NUM_POS+kMinv] = Dk[1];}
-// 		// Minv[k,subtree(k)] = -Dk^-T * Sk^T * Fk[:,subtree(k)]
-// 		int num_children = 6 - kMinv; T *Fk = &s_F[6*NUM_POS*kMinv];
-// 		if (num_children > 0){ 
-// 			#pragma unroll
-// 			for(int i = start; i < num_children; i += delta){
-// 				s_Minv[(kMinv+1+i)*NUM_POS + kMinv] = -Dk[1] * Fk[(kMinv+1+i)*6 + 2];
-// 			}
-// 		}
-// 		__syncthreads();
-// 		// then finish the IA += Tk^T * temp
-// 		if (has_parent){
-// 		    T *IAlamk = IAk - 36;
-// 		    for(int ind = start; ind < 36; ind += delta){
-// 		    	int c = ind / 6; int r = ind % 6;
-// 		    	T *Tkc = &Tk[6*r]; T *tempc = &s_temp[6*c];
-// 		    	IAlamk[ind] += dotProd_GPU<T,6,1,1>(Tkc,tempc);
-// 		    }
-// 		}
-// 		// while updating F
-// 		// Fk[:,subtree(k)] = Ui * Minv[k,subtree(k)]
-// 		#pragma unroll
-// 		for(int ind = start; ind <= num_children*6; ind += delta){
-// 			int c = ind / 6; int r = ind % 6;
-// 		    Fk[(kMinv+c)*6 + r] += Uk[r] * s_Minv[(kMinv+c)*NUM_POS + kMinv];
-// 		}
-// 		__syncthreads();
-// 		// Flamk[:,subtree(k)] = Flamk[:,subtree(k)] + Tk^T * Fk[:,subtree(k)]
-// 		if (has_parent){ 
-// 			for(int ind = start; ind <= NUM_POS*6; ind += delta){
-// 				int c = ind / 6; int r = ind % 6; int cOffset = c*NUM_POS;
-// 				T *FkColc = Fk + cOffset; T *FlamkColc = FkColc - 6*NUM_POS; T *TkColr = Tk + 6*r; 
-// 				FlamkColc[r] = dotProd_GPU<T,6,6,1>(TkColr,FkColc);
-// 			}
-// 		}
-// 		__syncthreads();
-// 	}
-
-// 	//----------------------------------------------------------------------------
-// 	// Minv forwrd pass
-// 	//----------------------------------------------------------------------------
-    
-// 	for (int kMinv = 0; kMinv < NUM_POS; kMinv++){
-// 		// define variables
-// 		int N_subtree = NUM_POS - kMinv; bool has_parent = (kMinv > 0); T *Tk = &s_T[36*kMinv];
-// 		T *Fk_subtree = &s_F[(NUM_POS+1)*6*kMinv]; T *Minv_subtree = &s_Minv[NUM_POS*kMinv + kMinv];
-// 		if(has_parent){
-// 			// Start the update for Minv and F
-// 			//    (if_has_parent) Temp = Tk^T * Flamk[:,subtree(i)] // transform columns of Flamk
-// 			T *Flamk_subtree = Fk_subtree - 6*NUM_POS;
-// 	        for (int ind = start; ind < 6*N_subtree; ind += delta){
-// 	        	int c = ind / 6; int r = ind % 6;
-// 	        	T *TkCol = &Tk[r*6]; // for transpose
-// 	        	T *FlamCol = &Flamk_subtree[6*c];
-// 	            s_temp[ind] += dotProd_GPU<T,6,1,1>(TkCol,FlamCol);
-// 	        }
-// 	        __syncthreads();
-// 	        // Minv[k,subtree(k)] += -Dk^-1 * Uk^T * Temp
-// 	        T *Uk = &s_U[6 * kMinv];
-// 	        for (int ind = start; ind < N_subtree; ind += delta){
-// 	        	T nDkinv = -s_D[2*kMinv+1]; T *tempc = s_temp[6*ind];
-// 	        	Minv_subtree[NUM_POS*ind] += nDkinv * dotProd_GPU<T,6,1,1>(Uk,tempc);
-// 	        }
-// 	        __syncthreads();
-// 	    }
-// 	    // Fk = Sk * Minv[k,subtree(k)] + (if_has_parents)Temp
-// 	    //    since Sk = [0,0,1,0,0,0] it just zeros out all but the 3rd entry
-// 	    for(int ind = start; ind < 6*N_subtree; ind += delta){
-// 			int c = ind / 6; int r = ind % 6;
-// 			Fk_subtree[ind] = (r == 2) * Minv_subtree[NUM_POS*c] + has_parent * s_temp[ind]; // no branch
-// 		}
-// 	    __syncthreads();
-// 	}
-// }
-
 template <typename T, bool MPC_MODE = false, bool QDD_READY = false>
 __device__
 void FD_helpers_GPU(T *s_v, T *s_a, T *s_f, T *s_Minv, T *s_qd, T *s_qdd, T *s_I, T *s_IA, T *s_T, T *s_U, T *s_D, T *s_F, T *s_temp, T *s_fext = nullptr){
@@ -350,9 +252,44 @@ void FD_helpers_GPU_af_update(T *s_v, T *s_a, T *s_f, T *s_qd, T *s_qdd, T *s_I,
 	}
 }
 
+template <typename T, bool VEL_DAMPING = false>
+__device__
+void compute_qdd(T *s_qdd, T *s_Minv, T *s_f, T *s_u, T *s_qd, T *s_temp){
+	// form qdd = Minv (u - c) where c = S^T*f (in our case just row 3 of f)
+	// if(VEL_DAMPING) (u - (c + 0.5qd))
+	int start, delta; singleLoopVals_GPU(&start,&delta);
+	for (int ind = start; ind < NUM_POS; ind += delta){
+		s_temp[ind] = s_u[ind] - (s_f[6*ind + 2] + VEL_DAMPING*0.5*s_qd[ind]);
+	}
+	// we also need to densify Minv
+	for (int ind = start; ind < NUM_POS*NUM_POS; ind += delta){
+		int c = ind / NUM_POS; int r = ind % NUM_POS;
+		if (r > c){s_Minv[ind] = s_Minv[r*NUM_POS+c];}
+	}
+	__syncthreads();
+	// then form qdd
+	for (int ind = start; ind < NUM_POS; ind += delta){
+		s_qdd[ind] = dotProd_GPU<T,NUM_POS,NUM_POS,1>(&s_Minv[ind],s_temp);
+	}
+}
 
-// compute/load T,I
-// compute v,a,f,c,minv
-// compute qdd
-// recompute a,f
-// compute gradient
+// __shared__ T s_vaf[18*NUM_POS]; __shared__ s_temp[(50 + 6*NUM_POS)*NUM_POS];
+// assumes q, qd, u, I, Tbase are all loaded into mem already
+template <typename T, bool MPC_MODE = false, bool VEL_DAMPING = false>
+__device__
+void FD_helpers_GPU_scratch(T *s_vaf, T *s_Minv, T *s_q, T *s_qd, T *s_qdd, T *s_u, T *s_I, T *s_T, T *s_scratchMem, T *s_fext = nullptr){
+	int start, delta; singleLoopVals_GPU(&start,&delta);
+	T *s_v = &s_vaf[0]; T *s_a = &s_v[6*NUM_POS]; T *s_f = &s_a[6*NUM_POS];
+	T *s_IA = &s_scratchMem[0]; T *s_U = &s_IA[36*NUM_POS]; T *s_D = &s_U[6*NUM_POS]; T *s_temp = &s_D[2*NUM_POS]; T *s_F = &s_temp[6*NUM_POS]; 
+	T *s_sinq = &s_temp[0]; T *s_cosq = &s_sinq[NUM_POS];
+	for (int ind = start; ind < NUM_POS; ind += delta){s_sinq[ind] = sin(s_q[ind]); s_cosq[ind] = cos(s_q[ind]);} __syncthreads();
+	// then update transforms // and copy I into IA
+	updateTransforms_GPU<T>(s_T,s_sinq,s_cosq);
+	for (int ind = start; ind < 36*NUM_POS; ind += delta){s_IA[ind] = s_I[ind];} __syncthreads();
+	// then compute vaf, Minv
+	FD_helpers_GPU<T,MPC_MODE,false>(s_v,s_a,s_f,s_Minv,s_qd,s_qdd,s_I,s_IA,s_T,s_U,s_D,s_F,s_temp); __syncthreads();
+	// compute qdd
+	compute_qdd<T,VEL_DAMPING>(s_qdd,s_Minv,s_f,s_u,s_qd,s_temp); __syncthreads();
+	// then recompute af
+	FD_helpers_GPU_af_update<T,MPC_MODE>(s_v,s_a,s_f,s_qd,s_qdd,s_I,s_T,s_temp,s_fext);
+}
