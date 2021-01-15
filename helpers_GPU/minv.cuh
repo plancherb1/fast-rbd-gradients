@@ -275,7 +275,7 @@ void compute_qdd(T *s_qdd, T *s_Minv, T *s_f, T *s_u, T *s_qd, T *s_temp){
 
 // __shared__ T s_vaf[18*NUM_POS]; __shared__ s_temp[(50 + 6*NUM_POS)*NUM_POS];
 // assumes q, qd, u, I, Tbase are all loaded into mem already
-template <typename T, bool MPC_MODE = false, bool VEL_DAMPING = false>
+template <typename T, bool MPC_MODE = false, bool VEL_DAMPING = false, bool RECOMPUTE_AF = true>
 __device__
 void FD_helpers_GPU_scratch(T *s_vaf, T *s_Minv, T *s_q, T *s_qd, T *s_qdd, T *s_u, T *s_I, T *s_T, T *s_scratchMem, T *s_fext = nullptr){
 	int start, delta; singleLoopVals_GPU(&start,&delta);
@@ -283,13 +283,24 @@ void FD_helpers_GPU_scratch(T *s_vaf, T *s_Minv, T *s_q, T *s_qd, T *s_qdd, T *s
 	T *s_IA = &s_scratchMem[0]; T *s_U = &s_IA[36*NUM_POS]; T *s_D = &s_U[6*NUM_POS]; T *s_temp = &s_D[2*NUM_POS]; T *s_F = &s_temp[6*NUM_POS]; 
 	T *s_sinq = &s_temp[0]; T *s_cosq = &s_sinq[NUM_POS];
 	for (int ind = start; ind < NUM_POS; ind += delta){s_sinq[ind] = sin(s_q[ind]); s_cosq[ind] = cos(s_q[ind]);} __syncthreads();
-	// then update transforms // and copy I into IA
+	// then update transforms // and copy I into IA (and make sure Minv and F are set to 0)
 	updateTransforms_GPU<T>(s_T,s_sinq,s_cosq);
-	for (int ind = start; ind < 36*NUM_POS; ind += delta){s_IA[ind] = s_I[ind];} __syncthreads();
+	for (int ind = start; ind < 36*NUM_POS; ind += delta){s_IA[ind] = s_I[ind];}
+	for (int ind = start; ind < 7*NUM_POS*NUM_POS; ind += delta){
+		T *dst = (ind < NUM_POS*NUM_POS) * (&s_Minv[ind]) + (ind >= NUM_POS*NUM_POS) * (&s_F[ind - NUM_POS*NUM_POS]);
+		dst = static_cast<T>(0);
+	} __syncthreads();
 	// then compute vaf, Minv
 	FD_helpers_GPU<T,MPC_MODE,false>(s_v,s_a,s_f,s_Minv,s_qd,s_qdd,s_I,s_IA,s_T,s_U,s_D,s_F,s_temp); __syncthreads();
 	// compute qdd
 	compute_qdd<T,VEL_DAMPING>(s_qdd,s_Minv,s_f,s_u,s_qd,s_temp); __syncthreads();
 	// then recompute af
-	FD_helpers_GPU_af_update<T,MPC_MODE>(s_v,s_a,s_f,s_qd,s_qdd,s_I,s_T,s_temp,s_fext);
+	if(RECOMPUTE_AF){
+		FD_helpers_GPU_af_update<T,MPC_MODE>(s_v,s_a,s_f,s_qd,s_qdd,s_I,s_T,s_temp,s_fext);
+	}
+}
+template <typename T, bool MPC_MODE = false, bool VEL_DAMPING = false>
+__device__
+void forwardDynamics(T *s_qdd, T *s_q, T *s_qd,  T *s_u, T *s_I, T *s_T, T *s_vaf, T *s_Minv, T *s_scratchMem, T *s_fext = nullptr){
+	FD_helpers_GPU_scratch<T,MPC_MODE,VEL_DAMPING,false>(s_vaf,s_Minv,s_q,s_qd,s_qdd,s_u,s_I,s_T,s_temp);
 }

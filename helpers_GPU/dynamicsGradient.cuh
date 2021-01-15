@@ -1302,3 +1302,34 @@ void dynamicsGradientKernel(T *d_dqdd, T *d_mem_vol_completely_fused, T *d_mem_c
       for (int ind = start; ind < 2*NUM_POS*NUM_POS; ind += delta){dqddk[ind] = s_dqdd[ind];} __syncthreads();
    }
 }
+
+// __shared__ T s_vaf[18*NUM_POS]; __shared__ s_temp[(50 + 6*NUM_POS)*NUM_POS];
+// assumes q, qd, u, I, Tbase are all loaded into mem already
+template <typename T, bool MPC_MODE = false, bool VEL_DAMPING = true>
+__device__
+void dynamicsAndGradient_scratch(T *s_dqdd, T *s_cdu, T *s_vaf, T *s_Minv, T *s_q, T *s_qd, T *s_qdd, T *s_u, T *s_I, T *s_T, T *s_scratchMem, T *s_fext = nullptr){
+   int start, delta; singleLoopVals_GPU(&start,&delta);
+   // compute vaf, Minv, (and qdd) from scratch
+   FD_helpers_GPU_scratch<T,MPC_MODE,VEL_DAMPING>(s_vaf,s_Minv,s_q,s_qd,s_qdd,s_u,s_I,s_T,s_temp); __syncthreads();
+   // then dc/du
+   T *s_v = &s_vaf[0]; T *s_a = &s_v[6*NUM_POS]; T *s_f &s_a[6*NUM_POS];
+   inverseDynamicsGradient_GPU<T,VEL_DAMPING>(s_cdu,s_qd,s_v,s_a,s_f,s_I,s_T,k); __syncthreads();
+   // finally compute the final dqdd
+   finish_dqdd_GPU<T>(s_dqdd,s_cdu,s_Minv); __syncthreads();
+}
+// constMem = I then T
+template <typename T, bool MPC_MODE = false, bool VEL_DAMPING = true>
+__device__
+void dynamicsAndGradient_scratch(T *s_dqdd, T *s_qdd, T *s_q, T *s_qd, T *s_u, T *s_constMem, T *s_fext = nullptr){
+   __shared__ T s_cdu[2*NUM_POS*NUM_POS]; __shared__ T s_vaf[18*NUM_POS]; __shared__ T s_Minv[NUM_POS*NUM_POS]; 
+   __shared__ s_scratchMem[(50 + 6*NUM_POS)*NUM_POS]; T *s_I = &s_constMem[0]; T *s_T = &s_I[36*NUM_POS]; 
+   dynamicsAndGradient_scratch<T,MPC_MODE,VEL_DAMPING>(s_dqdd,s_cdu,s_vaf,s_Minv,s_q,s_qd,s_qdd,s_u,s_I,s_T,s_scratchMem,s_fext);
+}
+
+// __shared__ T s_mem_const[CONST_VALS];  T *s_T = &s_mem_const[0]; T *s_I = &s_mem_const[36*NUM_POS];
+template <typename T>
+__device__
+void dynamicsAndGradient_init(T *d_mem_const, T *s_mem_const){
+   // load in constant I and any bit of T we compute as const vs. updated (if applicable)
+   for (int ind = start; ind < CONST_VALS; ind += delta){s_mem_const[ind] = d_mem_const[ind];}
+}
