@@ -287,8 +287,8 @@ void FD_helpers_GPU_scratch(T *s_vaf, T *s_Minv, T *s_q, T *s_qd, T *s_qdd, T *s
 	updateTransforms_GPU<T>(s_T,s_sinq,s_cosq);
 	for (int ind = start; ind < 36*NUM_POS; ind += delta){s_IA[ind] = s_I[ind];}
 	for (int ind = start; ind < 7*NUM_POS*NUM_POS; ind += delta){
-		T *dst = (ind < NUM_POS*NUM_POS) * (&s_Minv[ind]) + (ind >= NUM_POS*NUM_POS) * (&s_F[ind - NUM_POS*NUM_POS]);
-		dst = static_cast<T>(0);
+		T *dst = (ind < NUM_POS*NUM_POS) ? &s_Minv[ind] : &s_F[ind - NUM_POS*NUM_POS];
+		*dst = static_cast<T>(0);
 	} __syncthreads();
 	// then compute vaf, Minv
 	FD_helpers_GPU<T,MPC_MODE,false>(s_v,s_a,s_f,s_Minv,s_qd,s_qdd,s_I,s_IA,s_T,s_U,s_D,s_F,s_temp); __syncthreads();
@@ -302,5 +302,5 @@ void FD_helpers_GPU_scratch(T *s_vaf, T *s_Minv, T *s_q, T *s_qd, T *s_qdd, T *s
 template <typename T, bool MPC_MODE = false, bool VEL_DAMPING = false>
 __device__
 void forwardDynamics(T *s_qdd, T *s_q, T *s_qd,  T *s_u, T *s_I, T *s_T, T *s_vaf, T *s_Minv, T *s_scratchMem, T *s_fext = nullptr){
-	FD_helpers_GPU_scratch<T,MPC_MODE,VEL_DAMPING,false>(s_vaf,s_Minv,s_q,s_qd,s_qdd,s_u,s_I,s_T,s_temp);
+	FD_helpers_GPU_scratch<T,MPC_MODE,VEL_DAMPING,false>(s_vaf,s_Minv,s_q,s_qd,s_qdd,s_u,s_I,s_T,s_scratchMem);
 }

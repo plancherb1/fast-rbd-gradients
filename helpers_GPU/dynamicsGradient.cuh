@@ -19,7 +19,9 @@
     dim3 BlockDimms(32,NUM_POS);
 #endif
 
-#define LEAD_THREAD (threadIdx.x == 0 && threadIdx.y == 0)
+#ifndef LEAD_THREAD
+   #define LEAD_THREAD (threadIdx.x == 0 && threadIdx.y == 0)
+#define
 
 __device__ __forceinline__
 void singleLoopVals_GPU(int *start, int *delta){*start = threadIdx.x + threadIdx.y*blockDim.x; *delta = blockDim.x*blockDim.y;}
@@ -163,154 +165,6 @@ void serialFx_GPU(T *Fxmat, T *vec){
     Fxmat[35] = static_cast<T>(0);
 }
 
-//-------------------------------------------------------------------------------
-// Build 6x6 Spatial Inertia Tensor
-//-------------------------------------------------------------------------------
-// I6x6 = I3x3 - MCadj  mc    I3x3 = Ixx   Ixy   Ixz    mc =   0  -m*cz  m*cy
-//         mcT          mI           Ixy   Iyy   Iyz         m*cz     0 -m*cx
-//                                   Ixz   Iyz   Izz        -m*cy  m*cx  0
-// MCadj = -m*(cy*cy+cz*cz) m*cx*cy         m*cx*cz
-//          m*cx*cy        -m*(cx*cx+cz*cz) m*cy*cz 
-//          m*cx*cz         m*cy*cz        -m*(cx*cx+cy*cy)
-template <typename T>
-void buildI6x6_GPU(T *currI, T Ixx, T Ixy, T Ixz, T Iyy, T Iyz, T Izz, T cx, T cy, T cz, T m){
-    // Copy elements from the 3x3 Inertia Tensor and adjust for non-centered COM
-    currI[6*0 + 0] =  Ixx + m*(cy*cy+cz*cz);
-    currI[6*0 + 1] =  Ixy - m*cx*cy;
-    currI[6*0 + 2] =  Ixz - m*cx*cz;
-    currI[6*1 + 0] =  currI[6*0 + 1];
-    currI[6*1 + 1] =  Iyy + m*(cx*cx+cz*cz);
-    currI[6*1 + 2] =  Iyz - m*cy*cz;
-    currI[6*2 + 0] =  currI[6*0 + 2];
-    currI[6*2 + 1] =  currI[6*1 + 2];
-    currI[6*2 + 2] =  Izz + m*(cx*cx+cy*cy);
-    // define the mx sections on the BL and RT
-    currI[6*0 + 3] = 0;
-    currI[6*0 + 4] = -m*cz;
-    currI[6*0 + 5] =  m*cy;
-    currI[6*1 + 3] =  m*cz;
-    currI[6*1 + 4] = 0;
-    currI[6*1 + 5] = -m*cx;
-    currI[6*2 + 3] = -m*cy;
-    currI[6*2 + 4] =  m*cx;
-    currI[6*2 + 5] = 0;
-    currI[6*3 + 0] = 0;
-    currI[6*3 + 1] =  m*cz;
-    currI[6*3 + 2] = -m*cy;
-    currI[6*4 + 0] = -m*cz;
-    currI[6*4 + 1] = 0;
-    currI[6*4 + 2] =  m*cx;
-    currI[6*5 + 0] =  m*cy;
-    currI[6*5 + 1] = -m*cx;
-    currI[6*5 + 2] = 0;
-    // finally the mass on the BR
-    currI[6*3 + 3] = m;
-    currI[6*3 + 4] = 0;
-    currI[6*3 + 5] = 0;
-    currI[6*4 + 3] = 0;
-    currI[6*4 + 4] = m;
-    currI[6*4 + 5] = 0;
-    currI[6*5 + 3] = 0;
-    currI[6*5 + 4] = 0;
-    currI[6*5 + 5] = m;
-}
-
-//-------------------------------------------------------------------------------
-// Initialize Spatial Inertia Tensors from Constants
-//-------------------------------------------------------------------------------
-template <typename T>
-__device__
-void buildInertiaTensors_GPU(T *I){
-    // Per-Robot Inertia Constants (parsed from urdf)
-    // -- First Joint/Link Mass, Position, Inertia
-    #define l0_Ixx   static_cast<T>(0.121)
-    #define l0_Ixy   static_cast<T>(0.0)
-    #define l0_Ixz   static_cast<T>(0.0)
-    #define l0_Iyy   static_cast<T>(0.116)
-    #define l0_Iyz   static_cast<T>(-0.021)
-    #define l0_Izz   static_cast<T>(0.0175)
-    #define l0_mass  static_cast<T>(5.76)
-    #define l0_comx  static_cast<T>(0.0)
-    #define l0_comy  static_cast<T>(-0.03)
-    #define l0_comz  static_cast<T>(0.12)
-    // -- Second Joint/Link Mass, Position, Inertia
-    #define l1_Ixx   static_cast<T>(0.0638)
-    #define l1_Ixy   static_cast<T>(0.0001)
-    #define l1_Ixz   static_cast<T>(0.00008)
-    #define l1_Iyy   static_cast<T>(0.0416)
-    #define l1_Iyz   static_cast<T>(0.0157)
-    #define l1_Izz   static_cast<T>(0.0331)
-    #define l1_mass  static_cast<T>(6.35)
-    #define l1_comx  static_cast<T>(0.0003)
-    #define l1_comy  static_cast<T>(0.059)
-    #define l1_comz  static_cast<T>(0.042)
-    // -- Third Joint/Link Mass, Position, Inertia
-    #define l2_Ixx   static_cast<T>(0.0873)
-    #define l2_Ixy   static_cast<T>(0.0)
-    #define l2_Ixz   static_cast<T>(0.0)
-    #define l2_Iyy   static_cast<T>(0.083)
-    #define l2_Iyz   static_cast<T>(0.014)
-    #define l2_Izz   static_cast<T>(0.0108)
-    #define l2_mass  static_cast<T>(3.5)
-    #define l2_comx  static_cast<T>(0.0)
-    #define l2_comy  static_cast<T>(0.03)
-    #define l2_comz  static_cast<T>(0.13)
-    // -- Fourth Joint/Link Mass, Position, Inertia
-    #define l3_Ixx   static_cast<T>(0.0368)
-    #define l3_Ixy   static_cast<T>(0.0)
-    #define l3_Ixz   static_cast<T>(0.0)
-    #define l3_Iyy   static_cast<T>(0.02045)
-    #define l3_Iyz   static_cast<T>(0.008)
-    #define l3_Izz   static_cast<T>(0.02171)
-    #define l3_mass  static_cast<T>(3.5)
-    #define l3_comx  static_cast<T>(0.0)
-    #define l3_comy  static_cast<T>(0.067)
-    #define l3_comz  static_cast<T>(0.034)
-    // -- Fifth Joint/Link Mass, Position, Inertia
-    #define l4_Ixx   static_cast<T>(0.0318)
-    #define l4_Ixy   static_cast<T>(0.000007)
-    #define l4_Ixz   static_cast<T>(0.000027)
-    #define l4_Iyy   static_cast<T>(0.028916)
-    #define l4_Iyz   static_cast<T>(0.005586)
-    #define l4_Izz   static_cast<T>(0.006)
-    #define l4_mass  static_cast<T>(3.5)
-    #define l4_comx  static_cast<T>(0.0001)
-    #define l4_comy  static_cast<T>(0.021)
-    #define l4_comz  static_cast<T>(0.076)
-    // -- Sixth Joint/Link Mass, Position, Inertia
-    #define l5_Ixx   static_cast<T>(0.0049)
-    #define l5_Ixy   static_cast<T>(0.0)
-    #define l5_Ixz   static_cast<T>(0.0)
-    #define l5_Iyy   static_cast<T>(0.0047)
-    #define l5_Iyz   static_cast<T>(0.0)
-    #define l5_Izz   static_cast<T>(0.0036)
-    #define l5_mass  static_cast<T>(1.8)
-    #define l5_comx  static_cast<T>(0.0)
-    #define l5_comy  static_cast<T>(0.0006)
-    #define l5_comz  static_cast<T>(0.0004)
-    // -- Seventh Joint/Link Mass, Position, Inertia
-    #define l6_Ixx   static_cast<T>(0.0055)
-    #define l6_Ixy   static_cast<T>(0.0)
-    #define l6_Ixz   static_cast<T>(0.0)
-    #define l6_Iyy   static_cast<T>(0.0055)
-    #define l6_Iyz   static_cast<T>(0.0)
-    #define l6_Izz   static_cast<T>(0.005)
-    #define l6_mass  static_cast<T>(1.2)
-    #define l6_comx  static_cast<T>(0.0)
-    #define l6_comy  static_cast<T>(0.0)
-    #define l6_comz  static_cast<T>(0.02)
-
-    // build intertia matricies with these constants
-    buildI6x6_GPU<T>(I,l0_Ixx,l0_Ixy,l0_Ixz,l0_Iyy,l0_Iyz,l0_Izz,l0_comx,l0_comy,l0_comz,l0_mass);
-    buildI6x6_GPU<T>(&I[36],l1_Ixx,l1_Ixy,l1_Ixz,l1_Iyy,l1_Iyz,l1_Izz,l1_comx,l1_comy,l1_comz,l1_mass);
-    buildI6x6_GPU<T>(&I[36*2],l2_Ixx,l2_Ixy,l2_Ixz,l2_Iyy,l2_Iyz,l2_Izz,l2_comx,l2_comy,l2_comz,l2_mass);
-    buildI6x6_GPU<T>(&I[36*3],l3_Ixx,l3_Ixy,l3_Ixz,l3_Iyy,l3_Iyz,l3_Izz,l3_comx,l3_comy,l3_comz,l3_mass);
-    buildI6x6_GPU<T>(&I[36*4],l4_Ixx,l4_Ixy,l4_Ixz,l4_Iyy,l4_Iyz,l4_Izz,l4_comx,l4_comy,l4_comz,l4_mass);
-    buildI6x6_GPU<T>(&I[36*5],l5_Ixx,l5_Ixy,l5_Ixz,l5_Iyy,l5_Iyz,l5_Izz,l5_comx,l5_comy,l5_comz,l5_mass);
-    buildI6x6_GPU<T>(&I[36*6],l6_Ixx,l6_Ixy,l6_Ixz,l6_Iyy,l6_Iyz,l6_Izz,l6_comx,l6_comy,l6_comz,l6_mass);
-}
-
-
 #define tz_j1 static_cast<T>(0.1575)
 #define tz_j2 static_cast<T>(0.2025)
 #define ty_j3 static_cast<T>(0.2045)
@@ -417,283 +271,6 @@ void updateTransforms_GPU(T *s_T, T *s_sinq, T *s_cosq){
         int k = kcr / 9; int cr = kcr % 9; int c = cr / 3; int r = cr % 3;
         T *Tkcr = &s_T[36*k + 6*c + r];
         Tkcr[6*3 + 3] = *Tkcr; // BR is 3 cols and 3 rows over
-    }
-}
-
-template <typename T>
-__device__
-void buildTransforms_GPU(T *s_T, T *s_sinq, T *s_cosq){
-    // note since the TL and BR are identical we can simply load in the TL
-    // and then copy it over to the BR in parallel
-    // and also the TR is identically 0 so we can load that in parallel as well
-    if(__doOnce()){
-        // Link 1
-        s_T[36*0 + 6*0 + 0] = s_cosq[0];
-        s_T[36*0 + 6*0 + 1] = -s_sinq[0];
-        s_T[36*0 + 6*0 + 2] = static_cast<T>(0);
-        s_T[36*0 + 6*0 + 3] = -tz_j1 * s_sinq[0];
-        s_T[36*0 + 6*0 + 4] = -tz_j1 * s_cosq[0];
-        s_T[36*0 + 6*0 + 5] = static_cast<T>(0);
-        s_T[36*0 + 6*1 + 0] = s_sinq[0];
-        s_T[36*0 + 6*1 + 1] = s_cosq[0];
-        s_T[36*0 + 6*1 + 2] = static_cast<T>(0);
-        s_T[36*0 + 6*1 + 3] =  tz_j1 * s_cosq[0];
-        s_T[36*0 + 6*1 + 4] = -tz_j1 * s_sinq[0];
-        s_T[36*0 + 6*1 + 5] = static_cast<T>(0);
-        s_T[36*0 + 6*2 + 0] = static_cast<T>(0);
-        s_T[36*0 + 6*2 + 1] = static_cast<T>(0);
-        s_T[36*0 + 6*2 + 2] = static_cast<T>(1.0);
-        s_T[36*0 + 6*2 + 3] = static_cast<T>(0);
-        s_T[36*0 + 6*2 + 4] = static_cast<T>(0);
-        s_T[36*0 + 6*2 + 5] = static_cast<T>(0);
-        // s_T[36*0 + 6*3 + 0] = static_cast<T>(0);
-        // s_T[36*0 + 6*3 + 1] = static_cast<T>(0);
-        // s_T[36*0 + 6*3 + 2] = static_cast<T>(0);
-        // s_T[36*0 + 6*3 + 3] = s_cosq[0];
-        // s_T[36*0 + 6*3 + 4] = -s_sinq[0];
-        // s_T[36*0 + 6*3 + 5] = static_cast<T>(0);
-        // s_T[36*0 + 6*4 + 0] = static_cast<T>(0);
-        // s_T[36*0 + 6*4 + 1] = static_cast<T>(0);
-        // s_T[36*0 + 6*4 + 2] = static_cast<T>(0);
-        // s_T[36*0 + 6*4 + 3] = s_sinq[0];
-        // s_T[36*0 + 6*4 + 4] = s_cosq[0];
-        // s_T[36*0 + 6*4 + 5] = static_cast<T>(0);
-        // s_T[36*0 + 6*5 + 0] = static_cast<T>(0);
-        // s_T[36*0 + 6*5 + 1] = static_cast<T>(0);
-        // s_T[36*0 + 6*5 + 2] = static_cast<T>(0);
-        // s_T[36*0 + 6*5 + 3] = static_cast<T>(0);
-        // s_T[36*0 + 6*5 + 4] = static_cast<T>(0);
-        // s_T[36*0 + 6*5 + 5] = static_cast<T>(1.0);
-        // Link 2
-        s_T[36*1 + 6*0 + 0] = -s_cosq[1];
-        s_T[36*1 + 6*0 + 1] = s_sinq[1];;
-        s_T[36*1 + 6*0 + 2] = static_cast<T>(0);
-        s_T[36*1 + 6*0 + 3] = static_cast<T>(0);
-        s_T[36*1 + 6*0 + 4] = static_cast<T>(0);
-        s_T[36*1 + 6*0 + 5] = -tz_j2;
-        s_T[36*1 + 6*1 + 0] = static_cast<T>(0);
-        s_T[36*1 + 6*1 + 1] = static_cast<T>(0);
-        s_T[36*1 + 6*1 + 2] = static_cast<T>(1.0);
-        s_T[36*1 + 6*1 + 3] = -tz_j2 * s_cosq[1];
-        s_T[36*1 + 6*1 + 4] =  tz_j2 * s_sinq[1];
-        s_T[36*1 + 6*1 + 5] = static_cast<T>(0);
-        s_T[36*1 + 6*2 + 0] = s_sinq[1];
-        s_T[36*1 + 6*2 + 1] = s_cosq[1];
-        s_T[36*1 + 6*2 + 2] = static_cast<T>(0);
-        s_T[36*1 + 6*2 + 3] = static_cast<T>(0);
-        s_T[36*1 + 6*2 + 4] = static_cast<T>(0);
-        s_T[36*1 + 6*2 + 5] = static_cast<T>(0);
-        // s_T[36*1 + 6*3 + 0] = static_cast<T>(0);
-        // s_T[36*1 + 6*3 + 1] = static_cast<T>(0);
-        // s_T[36*1 + 6*3 + 2] = static_cast<T>(0);
-        // s_T[36*1 + 6*3 + 3] = -s_cosq[1];
-        // s_T[36*1 + 6*3 + 4] = s_sinq[1];
-        // s_T[36*1 + 6*3 + 5] = static_cast<T>(0);
-        // s_T[36*1 + 6*4 + 0] = static_cast<T>(0);
-        // s_T[36*1 + 6*4 + 1] = static_cast<T>(0);
-        // s_T[36*1 + 6*4 + 2] = static_cast<T>(0);
-        // s_T[36*1 + 6*4 + 3] = static_cast<T>(0);
-        // s_T[36*1 + 6*4 + 4] = static_cast<T>(0);
-        // s_T[36*1 + 6*4 + 5] = static_cast<T>(1.0);
-        // s_T[36*1 + 6*5 + 0] = static_cast<T>(0);
-        // s_T[36*1 + 6*5 + 1] = static_cast<T>(0);
-        // s_T[36*1 + 6*5 + 2] = static_cast<T>(0);
-        // s_T[36*1 + 6*5 + 3] = s_sinq[1];
-        // s_T[36*1 + 6*5 + 4] = s_cosq[1];
-        // s_T[36*1 + 6*5 + 5] = static_cast<T>(0);
-        // Link 3
-        s_T[36*2 + 6*0 + 0] = -s_cosq[2];
-        s_T[36*2 + 6*0 + 1] = s_sinq[2];
-        s_T[36*2 + 6*0 + 2] = static_cast<T>(0);
-        s_T[36*2 + 6*0 + 3] =  ty_j3 * s_sinq[2];
-        s_T[36*2 + 6*0 + 4] =  ty_j3 * s_cosq[2];
-        s_T[36*2 + 6*0 + 5] = static_cast<T>(0);
-        s_T[36*2 + 6*1 + 0] = static_cast<T>(0);
-        s_T[36*2 + 6*1 + 1] = static_cast<T>(0);
-        s_T[36*2 + 6*1 + 2] = static_cast<T>(1.0);
-        s_T[36*2 + 6*1 + 3] = static_cast<T>(0);
-        s_T[36*2 + 6*1 + 4] = static_cast<T>(0);
-        s_T[36*2 + 6*1 + 5] = static_cast<T>(0);
-        s_T[36*2 + 6*2 + 0] = s_sinq[2];
-        s_T[36*2 + 6*2 + 1] = s_cosq[2];
-        s_T[36*2 + 6*2 + 2] = static_cast<T>(0);
-        s_T[36*2 + 6*2 + 3] =  ty_j3 * s_cosq[2];
-        s_T[36*2 + 6*2 + 4] = -ty_j3 * s_sinq[2];
-        s_T[36*2 + 6*2 + 5] = static_cast<T>(0);
-        // s_T[36*2 + 6*3 + 0] = static_cast<T>(0);
-        // s_T[36*2 + 6*3 + 1] = static_cast<T>(0);
-        // s_T[36*2 + 6*3 + 2] = static_cast<T>(0);
-        // s_T[36*2 + 6*3 + 3] = -s_cosq[2];
-        // s_T[36*2 + 6*3 + 4] = s_sinq[2];
-        // s_T[36*2 + 6*3 + 5] = static_cast<T>(0);
-        // s_T[36*2 + 6*4 + 0] = static_cast<T>(0);
-        // s_T[36*2 + 6*4 + 1] = static_cast<T>(0);
-        // s_T[36*2 + 6*4 + 2] = static_cast<T>(0);
-        // s_T[36*2 + 6*4 + 3] = static_cast<T>(0);
-        // s_T[36*2 + 6*4 + 4] = static_cast<T>(0);
-        // s_T[36*2 + 6*4 + 5] = static_cast<T>(1.0);
-        // s_T[36*2 + 6*5 + 0] = static_cast<T>(0);
-        // s_T[36*2 + 6*5 + 1] = static_cast<T>(0);
-        // s_T[36*2 + 6*5 + 2] = static_cast<T>(0);
-        // s_T[36*2 + 6*5 + 3] = s_sinq[2];
-        // s_T[36*2 + 6*5 + 4] = s_cosq[2];
-        // s_T[36*2 + 6*5 + 5] = static_cast<T>(0);
-        // Link 4
-        s_T[36*3 + 6*0 + 0] = s_cosq[3];
-        s_T[36*3 + 6*0 + 1] = -s_sinq[3];
-        s_T[36*3 + 6*0 + 2] = static_cast<T>(0);
-        s_T[36*3 + 6*0 + 3] = static_cast<T>(0);
-        s_T[36*3 + 6*0 + 4] = static_cast<T>(0);
-        s_T[36*3 + 6*0 + 5] =  tz_j4;
-        s_T[36*3 + 6*1 + 0] = static_cast<T>(0);
-        s_T[36*3 + 6*1 + 1] = static_cast<T>(0);
-        s_T[36*3 + 6*1 + 2] = static_cast<T>(-1.0);
-        s_T[36*3 + 6*1 + 3] =  tz_j4 * s_cosq[3];
-        s_T[36*3 + 6*1 + 4] = -tz_j4 * s_sinq[3];
-        s_T[36*3 + 6*1 + 5] = static_cast<T>(0);
-        s_T[36*3 + 6*2 + 0] = s_sinq[3];
-        s_T[36*3 + 6*2 + 1] = s_cosq[3];
-        s_T[36*3 + 6*2 + 2] = static_cast<T>(0);
-        s_T[36*3 + 6*2 + 3] = static_cast<T>(0);
-        s_T[36*3 + 6*2 + 4] = static_cast<T>(0);
-        s_T[36*3 + 6*2 + 5] = static_cast<T>(0);
-        // s_T[36*3 + 6*3 + 0] = static_cast<T>(0);
-        // s_T[36*3 + 6*3 + 1] = static_cast<T>(0);
-        // s_T[36*3 + 6*3 + 2] = static_cast<T>(0);
-        // s_T[36*3 + 6*3 + 3] = s_cosq[3];
-        // s_T[36*3 + 6*3 + 4] = -s_sinq[3];
-        // s_T[36*3 + 6*3 + 5] = static_cast<T>(0);
-        // s_T[36*3 + 6*4 + 0] = static_cast<T>(0);
-        // s_T[36*3 + 6*4 + 1] = static_cast<T>(0);
-        // s_T[36*3 + 6*4 + 2] = static_cast<T>(0);
-        // s_T[36*3 + 6*4 + 3] = static_cast<T>(0);
-        // s_T[36*3 + 6*4 + 4] = static_cast<T>(0);
-        // s_T[36*3 + 6*4 + 5] = static_cast<T>(-1.0);
-        // s_T[36*3 + 6*5 + 0] = static_cast<T>(0);
-        // s_T[36*3 + 6*5 + 1] = static_cast<T>(0);
-        // s_T[36*3 + 6*5 + 2] = static_cast<T>(0);
-        // s_T[36*3 + 6*5 + 3] = s_sinq[3];
-        // s_T[36*3 + 6*5 + 4] = s_cosq[3];
-        // s_T[36*3 + 6*5 + 5] = static_cast<T>(0);
-        // Link 5
-        s_T[36*4 + 6*0 + 0] = -s_cosq[4];
-        s_T[36*4 + 6*0 + 1] = s_sinq[4];
-        s_T[36*4 + 6*0 + 2] = static_cast<T>(0);
-        s_T[36*4 + 6*0 + 3] =  ty_j5 * s_sinq[4];
-        s_T[36*4 + 6*0 + 4] =  ty_j5 * s_cosq[4];
-        s_T[36*4 + 6*0 + 5] = static_cast<T>(0);
-        s_T[36*4 + 6*1 + 0] = static_cast<T>(0);
-        s_T[36*4 + 6*1 + 1] = static_cast<T>(0);
-        s_T[36*4 + 6*1 + 2] = static_cast<T>(1.0);
-        s_T[36*4 + 6*1 + 3] = static_cast<T>(0);
-        s_T[36*4 + 6*1 + 4] = static_cast<T>(0);
-        s_T[36*4 + 6*1 + 5] = static_cast<T>(0);
-        s_T[36*4 + 6*2 + 0] = s_sinq[4];
-        s_T[36*4 + 6*2 + 1] = s_cosq[4];
-        s_T[36*4 + 6*2 + 2] = static_cast<T>(0);
-        s_T[36*4 + 6*2 + 3] =  ty_j5 * s_cosq[4];
-        s_T[36*4 + 6*2 + 4] = -ty_j5 * s_sinq[4];
-        s_T[36*4 + 6*2 + 5] = static_cast<T>(0);
-        // s_T[36*4 + 6*3 + 0] = static_cast<T>(0);
-        // s_T[36*4 + 6*3 + 1] = static_cast<T>(0);
-        // s_T[36*4 + 6*3 + 2] = static_cast<T>(0);
-        // s_T[36*4 + 6*3 + 3] = -s_cosq[4];
-        // s_T[36*4 + 6*3 + 4] = s_sinq[4];
-        // s_T[36*4 + 6*3 + 5] = static_cast<T>(0);
-        // s_T[36*4 + 6*4 + 0] = static_cast<T>(0);
-        // s_T[36*4 + 6*4 + 1] = static_cast<T>(0);
-        // s_T[36*4 + 6*4 + 2] = static_cast<T>(0);
-        // s_T[36*4 + 6*4 + 3] = static_cast<T>(0);
-        // s_T[36*4 + 6*4 + 4] = static_cast<T>(0);
-        // s_T[36*4 + 6*4 + 5] = static_cast<T>(1.0);
-        // s_T[36*4 + 6*5 + 0] = static_cast<T>(0);
-        // s_T[36*4 + 6*5 + 1] = static_cast<T>(0);
-        // s_T[36*4 + 6*5 + 2] = static_cast<T>(0);
-        // s_T[36*4 + 6*5 + 3] = s_sinq[4];
-        // s_T[36*4 + 6*5 + 4] = s_cosq[4];
-        // s_T[36*4 + 6*5 + 5] = static_cast<T>(0);
-        // Link 6
-        s_T[36*5 + 6*0 + 0] = s_cosq[5];
-        s_T[36*5 + 6*0 + 1] = -s_sinq[5];
-        s_T[36*5 + 6*0 + 2] = static_cast<T>(0);
-        s_T[36*5 + 6*0 + 3] = static_cast<T>(0);
-        s_T[36*5 + 6*0 + 4] = static_cast<T>(0);
-        s_T[36*5 + 6*0 + 5] =  tz_j6;
-        s_T[36*5 + 6*1 + 0] = static_cast<T>(0);
-        s_T[36*5 + 6*1 + 1] = static_cast<T>(0);
-        s_T[36*5 + 6*1 + 2] = static_cast<T>(-1.0);
-        s_T[36*5 + 6*1 + 3] =  tz_j6 * s_cosq[5];
-        s_T[36*5 + 6*1 + 4] = -tz_j6 * s_sinq[5];
-        s_T[36*5 + 6*1 + 5] = static_cast<T>(0);
-        s_T[36*5 + 6*2 + 0] = s_sinq[5];
-        s_T[36*5 + 6*2 + 1] = s_cosq[5];
-        s_T[36*5 + 6*2 + 2] = static_cast<T>(0);
-        s_T[36*5 + 6*2 + 3] = static_cast<T>(0);
-        s_T[36*5 + 6*2 + 4] = static_cast<T>(0);
-        s_T[36*5 + 6*2 + 5] = static_cast<T>(0);
-        // s_T[36*5 + 6*3 + 0] = static_cast<T>(0);
-        // s_T[36*5 + 6*3 + 1] = static_cast<T>(0);
-        // s_T[36*5 + 6*3 + 2] = static_cast<T>(0);
-        // s_T[36*5 + 6*3 + 3] = s_cosq[5];
-        // s_T[36*5 + 6*3 + 4] = -s_sinq[5];
-        // s_T[36*5 + 6*3 + 5] = static_cast<T>(0);
-        // s_T[36*5 + 6*4 + 0] = static_cast<T>(0);
-        // s_T[36*5 + 6*4 + 1] = static_cast<T>(0);
-        // s_T[36*5 + 6*4 + 2] = static_cast<T>(0);
-        // s_T[36*5 + 6*4 + 3] = static_cast<T>(0);
-        // s_T[36*5 + 6*4 + 4] = static_cast<T>(0);
-        // s_T[36*5 + 6*4 + 5] = static_cast<T>(-1.0);
-        // s_T[36*5 + 6*5 + 0] = static_cast<T>(0);
-        // s_T[36*5 + 6*5 + 1] = static_cast<T>(0);
-        // s_T[36*5 + 6*5 + 2] = static_cast<T>(0);
-        // s_T[36*5 + 6*5 + 3] = s_sinq[5];
-        // s_T[36*5 + 6*5 + 4] = s_cosq[5];
-        // s_T[36*5 + 6*5 + 5] = static_cast<T>(0);
-        // Link 7
-        s_T[36*6 + 6*0 + 0] = -s_cosq[6];
-        s_T[36*6 + 6*0 + 1] = s_sinq[6];
-        s_T[36*6 + 6*0 + 2] = static_cast<T>(0);
-        s_T[36*6 + 6*0 + 3] =  ty_j7 * s_sinq[6];
-        s_T[36*6 + 6*0 + 4] =  ty_j7 * s_cosq[6];
-        s_T[36*6 + 6*0 + 5] = static_cast<T>(0);
-        s_T[36*6 + 6*1 + 0] = static_cast<T>(0);
-        s_T[36*6 + 6*1 + 1] = static_cast<T>(0);
-        s_T[36*6 + 6*1 + 2] = static_cast<T>(1.0);
-        s_T[36*6 + 6*1 + 3] = static_cast<T>(0);
-        s_T[36*6 + 6*1 + 4] = static_cast<T>(0);
-        s_T[36*6 + 6*1 + 5] = static_cast<T>(0);
-        s_T[36*6 + 6*2 + 0] = s_sinq[6];
-        s_T[36*6 + 6*2 + 1] = s_cosq[6];
-        s_T[36*6 + 6*2 + 2] = static_cast<T>(0);
-        s_T[36*6 + 6*2 + 3] =  ty_j7 * s_cosq[6];
-        s_T[36*6 + 6*2 + 4] = -ty_j7 * s_sinq[6];
-        s_T[36*6 + 6*2 + 5] = static_cast<T>(0);
-        // s_T[36*6 + 6*3 + 0] = static_cast<T>(0);
-        // s_T[36*6 + 6*3 + 1] = static_cast<T>(0);
-        // s_T[36*6 + 6*3 + 2] = static_cast<T>(0);
-        // s_T[36*6 + 6*3 + 3] = -s_cosq[6];
-        // s_T[36*6 + 6*3 + 4] = s_sinq[6];
-        // s_T[36*6 + 6*3 + 5] = static_cast<T>(0);
-        // s_T[36*6 + 6*4 + 0] = static_cast<T>(0);
-        // s_T[36*6 + 6*4 + 1] = static_cast<T>(0);
-        // s_T[36*6 + 6*4 + 2] = static_cast<T>(0);
-        // s_T[36*6 + 6*4 + 3] = static_cast<T>(0);
-        // s_T[36*6 + 6*4 + 4] = static_cast<T>(0);
-        // s_T[36*6 + 6*4 + 5] = static_cast<T>(1.0);
-        // s_T[36*6 + 6*5 + 0] = static_cast<T>(0);
-        // s_T[36*6 + 6*5 + 1] = static_cast<T>(0);
-        // s_T[36*6 + 6*5 + 2] = static_cast<T>(0);
-        // s_T[36*6 + 6*5 + 3] = s_sinq[6];
-        // s_T[36*6 + 6*5 + 4] = s_cosq[6];
-        // s_T[36*6 + 6*5 + 5] = static_cast<T>(0);
-    }
-    int start, delta; singleLoopVals_GPU(&start,&delta);
-    // then copy over the TL to the BR and zero TR
-    for(int kcr = 0; kcr < NUM_POS*9; kcr += delta){
-        int k = kcr / 9; int cr = kcr % 9; int c = cr / 3; int r = cr % 3;
-        T *Tkcr = &s_T[36*k + 6*c + r];
-        Tkcr[6*3 + 3] = *Tkcr; // BR is 3 cols over and 3 rows down
-        Tkcr[6*3] = static_cast<T>(0); // TR is 3 cols over
     }
 }
 
@@ -1073,7 +650,7 @@ void compute_cdu_GPU_part2(T *s_cdu, T *s_fdq, T *s_fdqd){
 
 template <typename T, bool VEL_DAMPING = 1>
 __device__
-void inverseDynamicsGradient_GPU(T *s_cdu, T *s_qd, T *s_v, T *s_a, T *s_f, T *s_I, T *s_T, int k){
+void inverseDynamicsGradient_GPU(T *s_cdu, T *s_qd, T *s_v, T *s_a, T *s_f, T *s_I, T *s_T){
 	// note v,a,fdu (for iiwa) only exist for c < k cols so can compactly fit in (1 + 2 + ... NUM_POS)*6 space
 	// this is (NUM_POS)*(NUM_POS+1)/2*6 = 3*NUM_POS*(NUM_POS+1)
 	__shared__ T s_vdq[3*NUM_POS*(NUM_POS+1)];
@@ -1224,7 +801,7 @@ void dynamicsGradientKernel_split(T *d_cdu, T *d_mem_vol_split, T *d_mem_const){
       // then update transforms
       updateTransforms_GPU<T>(s_T,s_sinq,s_cosq); __syncthreads();
       // then dc/du
-      inverseDynamicsGradient_GPU<T,VEL_DAMPING>(s_cdu,s_qd,s_v,s_a,s_f,s_I,s_T,k); __syncthreads();
+      inverseDynamicsGradient_GPU<T,VEL_DAMPING>(s_cdu,s_qd,s_v,s_a,s_f,s_I,s_T); __syncthreads();
       // Then copy to global
       T *cduk = &d_cdu[k*2*NUM_POS*NUM_POS];
       #pragma unroll
@@ -1259,7 +836,7 @@ void dynamicsGradientKernel_fused(T *d_cdu, T *d_mem_vol_fused, T *d_mem_const){
       // first compute vaf
       FD_helpers_GPU_vaf<T,MPC_MODE>(s_v,s_a,s_f,s_qd,s_qdd,s_I,s_T,s_temp); __syncthreads();
       // then dc/du
-      inverseDynamicsGradient_GPU<T,VEL_DAMPING>(s_cdu,s_qd,s_v,s_a,s_f,s_I,s_T,k); __syncthreads();
+      inverseDynamicsGradient_GPU<T,VEL_DAMPING>(s_cdu,s_qd,s_v,s_a,s_f,s_I,s_T); __syncthreads();
       // copy out to RAM
       T *cduk = &d_cdu[k*2*NUM_POS*NUM_POS];
       #pragma unroll
@@ -1293,7 +870,7 @@ void dynamicsGradientKernel(T *d_dqdd, T *d_mem_vol_completely_fused, T *d_mem_c
       // first compute vaf
       FD_helpers_GPU_vaf<T,MPC_MODE>(s_v,s_a,s_f,s_qd,s_qdd,s_I,s_T,s_temp); __syncthreads();
       // then dc/du
-      inverseDynamicsGradient_GPU<T,VEL_DAMPING>(s_cdu,s_qd,s_v,s_a,s_f,s_I,s_T,k); __syncthreads();
+      inverseDynamicsGradient_GPU<T,VEL_DAMPING>(s_cdu,s_qd,s_v,s_a,s_f,s_I,s_T); __syncthreads();
       // finally compute the final dqdd
       finish_dqdd_GPU<T>(s_dqdd,s_cdu,s_Minv); __syncthreads();
       // copy out to RAM
@@ -1308,12 +885,11 @@ void dynamicsGradientKernel(T *d_dqdd, T *d_mem_vol_completely_fused, T *d_mem_c
 template <typename T, bool MPC_MODE = false, bool VEL_DAMPING = true>
 __device__
 void dynamicsAndGradient_scratch(T *s_dqdd, T *s_cdu, T *s_vaf, T *s_Minv, T *s_q, T *s_qd, T *s_qdd, T *s_u, T *s_I, T *s_T, T *s_scratchMem, T *s_fext = nullptr){
-   int start, delta; singleLoopVals_GPU(&start,&delta);
    // compute vaf, Minv, (and qdd) from scratch
-   FD_helpers_GPU_scratch<T,MPC_MODE,VEL_DAMPING>(s_vaf,s_Minv,s_q,s_qd,s_qdd,s_u,s_I,s_T,s_temp); __syncthreads();
+   FD_helpers_GPU_scratch<T,MPC_MODE,VEL_DAMPING>(s_vaf,s_Minv,s_q,s_qd,s_qdd,s_u,s_I,s_T,s_scratchMem); __syncthreads();
    // then dc/du
-   T *s_v = &s_vaf[0]; T *s_a = &s_v[6*NUM_POS]; T *s_f &s_a[6*NUM_POS];
-   inverseDynamicsGradient_GPU<T,VEL_DAMPING>(s_cdu,s_qd,s_v,s_a,s_f,s_I,s_T,k); __syncthreads();
+   T *s_v = &s_vaf[0]; T *s_a = &s_v[6*NUM_POS]; T *s_f = &s_a[6*NUM_POS];
+   inverseDynamicsGradient_GPU<T,VEL_DAMPING>(s_cdu,s_qd,s_v,s_a,s_f,s_I,s_T); __syncthreads();
    // finally compute the final dqdd
    finish_dqdd_GPU<T>(s_dqdd,s_cdu,s_Minv); __syncthreads();
 }
@@ -1322,7 +898,7 @@ template <typename T, bool MPC_MODE = false, bool VEL_DAMPING = true>
 __device__
 void dynamicsAndGradient_scratch(T *s_dqdd, T *s_qdd, T *s_q, T *s_qd, T *s_u, T *s_constMem, T *s_fext = nullptr){
    __shared__ T s_cdu[2*NUM_POS*NUM_POS]; __shared__ T s_vaf[18*NUM_POS]; __shared__ T s_Minv[NUM_POS*NUM_POS]; 
-   __shared__ s_scratchMem[(50 + 6*NUM_POS)*NUM_POS]; T *s_I = &s_constMem[0]; T *s_T = &s_I[36*NUM_POS]; 
+   __shared__ T s_scratchMem[(50 + 6*NUM_POS)*NUM_POS]; T *s_I = &s_constMem[0]; T *s_T = &s_I[36*NUM_POS]; 
    dynamicsAndGradient_scratch<T,MPC_MODE,VEL_DAMPING>(s_dqdd,s_cdu,s_vaf,s_Minv,s_q,s_qd,s_qdd,s_u,s_I,s_T,s_scratchMem,s_fext);
 }
 
@@ -1331,5 +907,6 @@ template <typename T>
 __device__
 void dynamicsAndGradient_init(T *d_mem_const, T *s_mem_const){
    // load in constant I and any bit of T we compute as const vs. updated (if applicable)
+   int start, delta; singleLoopVals_GPU(&start,&delta);
    for (int ind = start; ind < CONST_VALS; ind += delta){s_mem_const[ind] = d_mem_const[ind];}
 }

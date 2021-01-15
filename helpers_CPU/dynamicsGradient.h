@@ -585,6 +585,13 @@ void updateTransforms(T *s_T, T *s_sinq, T *s_cosq){
     s_T[36*6 + 6*5 + 3] = s_sinq[6];
     s_T[36*6 + 6*5 + 4] = s_cosq[6];
 }
+// I and then T
+template <typename T>
+__host__
+void dynamicsAndGradient_init(T *h_mem_const){
+   initInertiaTensors<T>(h_mem_const);
+   initTransforms<T>(&h_mem_const[36*NUM_POS]);
+}
 
 //----------------------------------------------------------------------------
 // RNEA and Helpers

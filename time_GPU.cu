@@ -31,7 +31,7 @@ void kern_single_full(T *d_dqdd, T *d_mem_vol, T *d_mem_const, T *s_fext = nullp
 		updateTransforms_GPU<T>(s_T,s_sinq,s_cosq); __syncthreads();
 		// dqdd/dtau = Minv and  dqdd/dq(d) = -Minv*dc/dq(d) note: dM term in dq drops out if you compute c with fd qdd per carpentier
 		FD_helpers_GPU_vaf<T,MPC_MODE>(s_v,s_a,s_f,s_qd,s_qdd,s_I,s_T,s_temp,s_fext); __syncthreads();
-		inverseDynamicsGradient_GPU<T,VEL_DAMPING>(s_cdu,s_qd,s_v,s_a,s_f,s_I,s_T,0); __syncthreads();
+		inverseDynamicsGradient_GPU<T,VEL_DAMPING>(s_cdu,s_qd,s_v,s_a,s_f,s_I,s_T); __syncthreads();
 		// finally compute the final dqdd by multiplying by Minv
 		finish_dqdd_GPU<T>(s_dqdd,s_cdu,s_Minv); __syncthreads();
 	}
@@ -63,7 +63,7 @@ void kern_single_vaf_dcdu(T *d_cdu, T *d_mem_vol, T *d_mem_const, T *s_fext = nu
 		updateTransforms_GPU<T>(s_T,s_sinq,s_cosq); __syncthreads();
 		// dqdd/dtau = Minv and  dqdd/dq(d) = -Minv*dc/dq(d) note: dM term in dq drops out if you compute c with fd qdd per carpentier
 		FD_helpers_GPU_vaf<T,MPC_MODE>(s_v,s_a,s_f,s_qd,s_qdd,s_I,s_T,s_temp,s_fext); __syncthreads();
-		inverseDynamicsGradient_GPU<T,VEL_DAMPING>(s_cdu,s_qd,s_v,s_a,s_f,s_I,s_T,0); __syncthreads();
+		inverseDynamicsGradient_GPU<T,VEL_DAMPING>(s_cdu,s_qd,s_v,s_a,s_f,s_I,s_T); __syncthreads();
 	}
 	#pragma unroll
 	for (int ind = start; ind < 2*NUM_POS*NUM_POS; ind += delta){d_cdu[ind] = s_cdu[ind];}
