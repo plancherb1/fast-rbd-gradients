@@ -21,7 +21,7 @@
 
 #ifndef LEAD_THREAD
    #define LEAD_THREAD (threadIdx.x == 0 && threadIdx.y == 0)
-#define
+#endif
 
 __device__ __forceinline__
 void singleLoopVals_GPU(int *start, int *delta){*start = threadIdx.x + threadIdx.y*blockDim.x; *delta = blockDim.x*blockDim.y;}
