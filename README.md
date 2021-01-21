@@ -82,19 +82,20 @@ sudo update-initramfs -u
 If you get errors on missing firmware do this: https://askubuntu.com/questions/832524/possible-missing-frmware-lib-firmware-i915
 #### Go into headless mode for rest of CUDA install -- GPU MUST BE INSTALLED FOR THIS
 ```
-sudo service lightdm stop # Or boot via recovery mode and enter the root command line
+sudo service lightdm stop # Or Cntrl+Alt+F3 Or boot via recovery mode and enter the root command line
 ```
 ```
 cd ~/Downloads
 sudo sh cuda_11.0.2_450.51.05_linux.run
 ```
-When running it choose to install the drivers and cuda toolkit (no need for the samples or dog)
+When running it choose to install the drivers and cuda toolkit (no need for the samples or doc)
 ```
-sudo serivce lightdm start # Or cntrl+d and resume normal boot
+sudo serivce lightdm start # Or Cntrl+Alt+F2 Or Cntrl+d and resume normal boot
 ```
 #### Add to bashrc
+Note that cuda below might be cuda-version. In that case update the below or symlink.
 ```
 echo #CUDA >> ~/.bashrc
-echo export PATH="usr/local/cuda//bin:$PATH" >> ~/.bashrc
+echo export PATH="usr/local/cuda/bin:$PATH" >> ~/.bashrc
 echo export LD_LIBRARY_PATH=":usr/local/cuda/lib64:$LD_LIBRARY_PATH" >> ~/.bashrc
 ```
