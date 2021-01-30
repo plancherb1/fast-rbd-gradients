@@ -1,5 +1,16 @@
 # Accelerating Robot Dynamics Gradients on a CPU, GPU, and FPGA
 
+This repository contains the code associated with the paper "Accelerating Robot Dynamics Gradients on a CPU, GPU, and FPGA", accepted to RA-L 2021. It is available under the open source MIT license and can be cited as shown below:
+```
+@article{plancher2021fastrbdgrad,
+  title={Accelerating Robot Dynamics Gradients on a CPU, GPU, and FPGA},
+  author={Plancher, Brian and Neuman, Sabrina M. and Bourgeat, Thomas and Kuindersma, Scott and Devadas, Srini and Reddi, Vijay Janapa},
+  journal={Robotics and Automation Letters (RAL)},
+  year={2021},
+  publisher={IEEE}
+}
+```
+
 ## Timing tests and code for the CPU and GPU.
 
 ### The baseline code (and compilation instructions) are:
