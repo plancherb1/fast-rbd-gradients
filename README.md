@@ -5,7 +5,7 @@ This repository contains the code associated with the paper "Accelerating Robot 
 @article{plancher2021fastrbdgrad,
   title={Accelerating Robot Dynamics Gradients on a CPU, GPU, and FPGA},
   author={Plancher, Brian and Neuman, Sabrina M. and Bourgeat, Thomas and Kuindersma, Scott and Devadas, Srini and Reddi, Vijay Janapa},
-  journal={Robotics and Automation Letters (RAL)},
+  journal={Robotics and Automation Letters (RA-L)},
   year={2021},
   publisher={IEEE}
 }
