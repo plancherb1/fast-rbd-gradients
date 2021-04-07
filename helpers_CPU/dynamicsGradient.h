@@ -587,7 +587,6 @@ void updateTransforms(T *s_T, T *s_sinq, T *s_cosq){
 }
 // I and then T
 template <typename T>
-__host__
 void dynamicsAndGradient_init(T *h_mem_const){
    initInertiaTensors<T>(h_mem_const);
    initTransforms<T>(&h_mem_const[36*NUM_POS]);
