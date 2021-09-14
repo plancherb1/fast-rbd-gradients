@@ -1,3 +1,5 @@
+## [!] We have released a full URDF parsing GPU-accelerated Rigid Body Dynamics Libaray - [GRiD](https://github.com/robot-acceleration/GRiD)!
+
 # Accelerating Robot Dynamics Gradients on a CPU, GPU, and FPGA
 
 This repository contains the code associated with the paper "Accelerating Robot Dynamics Gradients on a CPU, GPU, and FPGA", accepted to RA-L 2021. It is available under the open source MIT license and can be cited as shown below:
